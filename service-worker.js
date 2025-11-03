@@ -1,11 +1,12 @@
 /* TipOver SW — yksinkertainen app-shell + assets + pulmatiedosto */
-const CACHE = 'tipover-v1';
+const CACHE = 'tipover-v2';
 const ASSETS = [
   './',
   './index.html',
   './app.js',
   './manifest.webmanifest',
   './tipover_pulmat.json',
+  './pwa_icon_180.png',
   './pwa_icon_192.png',
   './pwa_icon_512.png'
 ];
