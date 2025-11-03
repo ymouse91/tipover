@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>TipOver – Pulmaeditori v2 (Sarjatuki)</title>
+<style>
+:root{
+  --cell: 64px;
+  --gap: 6px;
+  --ink: #0f172a;
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --accent: #0d6efd;
+  --ok: #10b981;
+  --warn: #f59e0b;
+  --err: #ef4444;
+  --goal: #ef4444;  /* red, h=1 goal */
+  --h2: #facc15;    /* yellow */
+  --h3: #22c55e;    /* green */
+  --h4: #3b82f6;    /* blue */
+  --slab: #e5e7eb;
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+html, body{ height:100%; }
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,sans-serif;
+  display:grid; grid-template-columns: 320px 1fr; gap:14px;
+  padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+}
+
+/* SIDEBAR (series manager) */
+aside{
+  background:var(--panel); border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,.06);
+  padding:12px;
+  display:flex; flex-direction:column; gap:10px; min-height: 0;
+}
+h1{ margin:0; font-size:1.05rem; font-weight:800; }
+label{ font-size:.9rem; display:block; margin:6px 0 2px; }
+input[type="text"], select{
+  width:100%; padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px; background:#fff;
+}
+small.dim{ color:#6b7280; }
+
+.series-list{
+  border:1px solid #e5e7eb; border-radius:10px; overflow:auto; min-height:180px; max-height:40vh;
+}
+.series-item{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:8px 10px; border-bottom:1px solid #f1f5f9; background:#fff;
+}
+.series-item:last-child{ border-bottom:0; }
+.series-item .meta{ display:flex; flex-direction:column; gap:2px; font-size:.9rem; }
+.series-item .meta .sub{ color:#64748b; font-size:.8rem; }
+.series-item .btns{ display:flex; gap:6px; }
+.iconbtn{
+  border:1px solid #e5e7eb; background:#fff; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:.85rem;
+}
+.iconbtn:hover{ background:#f8fafc; }
+
+button.primary, button.secondary{
+  border:0; border-radius:10px; padding:10px 12px; cursor:pointer; font-weight:700;
+}
+button.primary{ background:var(--accent); color:white; }
+button.secondary{ background:#eef2ff; color:#111; }
+
+hr.sep{ border:0; height:1px; background:#e5e7eb; margin:8px 0; }
+
+/* MAIN EDITOR */
+main{
+  display:flex; flex-direction:column; gap:12px; min-width:0;
+}
+.panel{
+  background:var(--panel); border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,.06);
+  padding:12px;
+}
+.badges{ display:flex; flex-wrap:wrap; gap:8px; }
+.badge{ padding:6px 10px; border-radius:999px; background:#eef2ff; font-size:.9rem; }
+.badge strong{ margin-right:6px; }
+
+.tools{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+button.tool{
+  border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:10px 12px;
+  font-size:14px; display:flex; align-items:center; gap:8px; cursor:pointer;
+}
+button.tool .dot{
+  width:18px; height:18px; border-radius:4px; display:inline-block; border:1px solid rgba(0,0,0,.08);
+}
+button.tool[data-tool="goal"] .dot{ background:var(--goal); }
+button.tool[data-tool="h2"] .dot{ background:var(--h2); }
+button.tool[data-tool="h3"] .dot{ background:var(--h3); }
+button.tool[data-tool="h4"] .dot{ background:var(--h4); }
+button.tool[data-tool="start"] .dot{ background:repeating-linear-gradient(45deg,#111 0 3px,#fff 3px 6px); }
+button.tool[data-tool="erase"] .dot{ background:linear-gradient(45deg,#ddd 0%,#f9f9f9 100%); }
+button.tool.active{ outline:2px solid var(--accent); }
+
+.grid-wrap{ padding:16px; }
+.grid{
+  display:grid; grid-template-columns: repeat(6, var(--cell));
+  grid-template-rows: repeat(6, var(--cell));
+  gap: var(--gap); justify-content:center;
+  touch-action: manipulation;
+}
+.cell{
+  width:var(--cell); height:var(--cell); border-radius:10px;
+  background:#e5e7eb; position:relative; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:18px; user-select:none;
+}
+.cell .mark{
+  position:absolute; inset:0; border-radius:10px; display:flex; align-items:center; justify-content:center;
+  color:#111; text-shadow:0 1px 0 rgba(255,255,255,.6);
+}
+.cell .mark.goal{ background:var(--goal); color:white; font-weight:900; }
+.cell .mark.h2{ background:var(--h2); }
+.cell .mark.h3{ background:var(--h3); }
+.cell .mark.h4{ background:var(--h4); }
+.cell .slab{ position:absolute; inset:0; background:var(--slab); border-radius:10px; }
+
+.start-pin{
+  position:absolute; width:18px; height:18px; border-radius:50%;
+  background: #111; border:2px solid #fff; box-shadow:0 0 0 2px #111;
+  bottom:6px; right:6px;
+}
+
+.footer{
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;
+}
+.footer .left, .footer .right{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+
+.state{
+  font-size:.95rem; padding:8px 12px; border-radius:10px;
+  background:#f8fafc; border:1px solid #e5e7eb;
+}
+.state.ok{ border-color: rgba(16,185,129,.4); }
+.state.warn{ border-color: rgba(245,158,11,.4); }
+.state.err{ border-color: rgba(239,68,68,.4); }
+
+@media (max-width: 980px){
+  body{ grid-template-columns: 1fr; }
+}
+@media (max-width:480px){
+  :root{ --cell: 52px; --gap: 5px; }
+}
+</style>
+</head>
+<body>
+  <aside>
+    <h1>Pulmasarja</h1>
+    <div>
+      <label for="puzName">Pulman nimi (valinnainen)</label>
+      <input id="puzName" type="text" placeholder="Esim. Beginner_01, Expert_07 ..." />
+      <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
+        <div style="flex:1">
+          <label for="puzDiff">Vaikeus (valinn.)</label>
+          <select id="puzDiff">
+            <option value="">—</option>
+            <option>Beginner</option>
+            <option>Intermediate</option>
+            <option>Advanced</option>
+            <option>Expert</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label for="puzRules">Säännöt</label>
+          <select id="puzRules">
+            <option value="original" selected>original</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button class="secondary" id="btnAddToSeries">Lisää sarjaan</button>
+        <button class="secondary" id="btnUpdateInSeries">Päivitä sarjassa</button>
+      </div>
+    </div>
+
+    <hr class="sep" />
+
+    <div class="series-list" id="seriesList" aria-label="Pulmat sarjassa"></div>
+
+    <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+      <input type="file" id="fileInput" accept="application/json" style="display:none" />
+      <button class="secondary" id="btnImport">Tuo (yksi tai sarja)</button>
+      <button class="secondary" id="btnExportSeries">Vie sarja JSON</button>
+      <button class="secondary" id="btnNewSeries">Tyhjennä sarja</button>
+    </div>
+    <small class="dim">Tuo voi lukea sekä yksittäisen pulman JSONin että sarjamuotoisen (`{ puzzles: [...] }`).</small>
+  </aside>
+
+  <main>
+    <div class="panel">
+      <div class="badges">
+        <span class="badge"><strong>Goal (1, 🔴):</strong><span id="countGoal">0</span>/≤1</span>
+        <span class="badge"><strong>2 (🟡):</strong><span id="count2">0</span>/≤10</span>
+        <span class="badge"><strong>3 (🟢):</strong><span id="count3">0</span>/≤4</span>
+        <span class="badge"><strong>4 (🔵):</strong><span id="count4">0</span>/≤2</span>
+        <span class="badge"><strong>Start:</strong><span id="hasStart">ei</span></span>
+      </div>
+
+      <div class="tools" id="tools">
+        <button class="tool" data-tool="goal"><span class="dot"></span>Goal (1)</button>
+        <button class="tool" data-tool="h2"><span class="dot"></span>2</button>
+        <button class="tool" data-tool="h3"><span class="dot"></span>3</button>
+        <button class="tool" data-tool="h4"><span class="dot"></span>4</button>
+        <button class="tool" data-tool="start"><span class="dot"></span>Start</button>
+        <button class="tool" data-tool="erase"><span class="dot"></span>Poista</button>
+      </div>
+    </div>
+
+    <div class="panel grid-wrap">
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <div class="panel footer">
+      <div class="left">
+        <button class="secondary" id="btnNewBoard">Tyhjennä ruudukko</button>
+        <button class="secondary" id="btnValidate">Tarkista</button>
+        <button class="secondary" id="btnCopyJSON">Kopioi tämä JSON</button>
+        <button class="secondary" id="btnExportOne">Vie tämä JSON</button>
+      </div>
+      <div class="right">
+        <div class="state" id="status">Valmis. Tee pulma, lisää sarjaan, vie sarja JSON.</div>
+      </div>
+    </div>
+  </main>
+
+<script>
+(()=> {
+  const SIZE = 6;
+
+  // Ylärajat (EI pakkoa käyttää kaikkia)
+  const MAX = { goal: 1, h2: 10, h3: 4, h4: 2 };
+
+  // Board state (yksi pulma)
+  const state = {
+    goal: null,                 // {r,c}
+    start: null,                // {r,c}
+    crates: new Map(),          // "r,c" -> h (2/3/4)
+  };
+
+  // Series
+  let series = [];              // array of puzzles
+  let selectedIndex = -1;       // currently selected in series (for edit/update)
+
+  // UI refs
+  const elGrid = document.getElementById('grid');
+  const elStatus = document.getElementById('status');
+  const elCounts = {
+    goal: document.getElementById('countGoal'),
+    h2: document.getElementById('count2'),
+    h3: document.getElementById('count3'),
+    h4: document.getElementById('count4'),
+    start: document.getElementById('hasStart'),
+  };
+  const toolsEl = document.getElementById('tools');
+  const seriesListEl = document.getElementById('seriesList');
+  const nameEl = document.getElementById('puzName');
+  const diffEl = document.getElementById('puzDiff');
+  const rulesEl = document.getElementById('puzRules');
+  const fileInput = document.getElementById('fileInput');
+
+  let currentTool = 'goal';
+
+  /* ---------- Helpers ---------- */
+  function key(rc){ return `${rc.r},${rc.c}`; }
+  function parseKey(k){ const [r,c]=k.split(',').map(Number); return {r,c}; }
+  function inBounds(r,c){ return r>=0 && c>=0 && r<SIZE && c<SIZE; }
+
+  function setStatus(msg, cls=''){
+    elStatus.className = 'state' + (cls? ' '+cls : '');
+    elStatus.textContent = msg;
+  }
+
+  function counts(){
+    let cnt = { goal: state.goal?1:0, h2:0, h3:0, h4:0, start: state.start?1:0 };
+    for(const h of state.crates.values()){
+      if(h===2) cnt.h2++;
+      else if(h===3) cnt.h3++;
+      else if(h===4) cnt.h4++;
+    }
+    return cnt;
+  }
+  function updateBadges(){
+    const cnt = counts();
+    elCounts.goal.textContent = cnt.goal;
+    elCounts.h2.textContent = cnt.h2;
+    elCounts.h3.textContent = cnt.h3;
+    elCounts.h4.textContent = cnt.h4;
+    elCounts.start.textContent = cnt.start? 'kyllä' : 'ei';
+  }
+
+  /* ---------- Grid ---------- */
+  function buildGrid(){
+    elGrid.innerHTML = '';
+    for(let r=0;r<SIZE;r++){
+      for(let c=0;c<SIZE;c++){
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        cell.addEventListener('pointerdown', onCellPointer);
+        elGrid.appendChild(cell);
+      }
+    }
+    render();
+  }
+
+  function pickCell(r,c){ return elGrid.children[r*SIZE + c] || null; }
+
+  function render(){
+    updateBadges();
+    for(const cell of elGrid.children){ cell.innerHTML=''; }
+
+    // goal
+    if(state.goal){
+      const cell = pickCell(state.goal.r, state.goal.c);
+      const m = document.createElement('div');
+      m.className = 'mark goal';
+      m.textContent = 'GOAL';
+      cell.appendChild(m);
+    }
+    // crates
+    for(const [k,h] of state.crates){
+      const {r,c} = parseKey(k);
+      const cell = pickCell(r,c);
+      const m = document.createElement('div');
+      m.className = 'mark h'+h;
+      m.textContent = String(h);
+      cell.appendChild(m);
+    }
+    // start
+    if(state.start){
+      const cell = pickCell(state.start.r, state.start.c);
+      if(cell){
+        const pin = document.createElement('div');
+        pin.className = 'start-pin';
+        cell.appendChild(pin);
+      }
+    }
+  }
+
+  function canPlace(tool, r, c){
+    if(tool==='goal'){
+      // yläraja ≤1; goal ei voi mennä crate-päälle (vaihdetaan järjestys: goal ensin tai crate ensin, mutta ei päällekkäin)
+      if(state.crates.has(`${r},${c}`)) return false;
+      return true;
+    }
+    if(tool==='start'){
+      if(!state.crates.has(`${r},${c}`)) return false;
+      if(state.goal && state.goal.r===r && state.goal.c===c) return false;
+      return true;
+    }
+    if(tool==='erase'){ return true; }
+    const h = Number(tool.slice(1));
+    if(!(h===2||h===3||h===4)) return false;
+    // ei goalin kanssa samaan
+    if(state.goal && state.goal.r===r && state.goal.c===c) return false;
+    // yläraja tarkistus: sallitaan korvaus samaan ruutuun (ei nosta määrää)
+    const cnt = counts();
+    const had = state.crates.has(`${r},${c}`) ? state.crates.get(`${r},${c}`) : null;
+    const inc = (had===h) ? 0 : 1;
+    if(h===2 && (cnt.h2 + inc) > MAX.h2) return false;
+    if(h===3 && (cnt.h3 + inc) > MAX.h3) return false;
+    if(h===4 && (cnt.h4 + inc) > MAX.h4) return false;
+    return true;
+  }
+
+  function place(tool, r, c){
+    const k = `${r},${c}`;
+    if(tool==='erase'){
+      if(state.start && state.start.r===r && state.start.c===c) state.start = null;
+      if(state.goal && state.goal.r===r && state.goal.c===c) state.goal = null;
+      state.crates.delete(k);
+      setStatus('Poistettu.', 'warn');
+      render();
+      return;
+    }
+    if(tool==='goal'){
+      if(!canPlace('goal', r, c)){ setStatus('Goal ei mahdu tähän (crate tiellä).', 'err'); return; }
+      state.goal = {r,c};
+      if(state.start && state.start.r===r && state.start.c===c) state.start = null;
+      setStatus('Goal asetettu.', 'ok');
+      render();
+      return;
+    }
+    if(tool==='start'){
+      if(!canPlace('start', r, c)){ setStatus('Start pitää asettaa laatikon (2/3/4) päälle, ei goalin päälle.', 'err'); return; }
+      state.start = {r,c};
+      setStatus('Start asetettu.', 'ok');
+      render();
+      return;
+    }
+    const h = Number(tool.slice(1));
+    if(!canPlace(tool, r, c)){ setStatus(`Laatikko ${h} ei mahdu (yläraja tai goal estää).`, 'err'); return; }
+    state.crates.set(k, h);
+    setStatus(`Laatikko ${h} asetettu.`, 'ok');
+    render();
+  }
+
+  function onCellPointer(e){
+    e.preventDefault();
+    const cell = e.currentTarget;
+    const r = Number(cell.dataset.r), c = Number(cell.dataset.c);
+    place(currentTool, r, c);
+  }
+
+  /* ---------- Tools ---------- */
+  toolsEl.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button.tool');
+    if(!btn) return;
+    currentTool = btn.dataset.tool;
+    for(const b of toolsEl.querySelectorAll('button.tool')) b.classList.toggle('active', b===btn);
+    setStatus(`Työkalu: ${btn.textContent.trim()}`);
+  });
+  toolsEl.querySelector('button.tool[data-tool="'+currentTool+'"]').classList.add('active');
+
+  /* ---------- Board ops ---------- */
+  document.getElementById('btnNewBoard').addEventListener('click', ()=>{
+    if(confirm('Tyhjennetäänkö ruudukko?')){
+      state.goal = null; state.start = null; state.crates.clear(); render();
+      setStatus('Ruudukko tyhjennetty.');
+    }
+  });
+
+  function validateBoard(){
+    const cnt = counts();
+    const errs = [];
+    if(cnt.goal>MAX.goal) errs.push(`Goal liikaa: ${cnt.goal}/${MAX.goal}`);
+    if(cnt.h2>MAX.h2) errs.push(`2-korkeat liikaa: ${cnt.h2}/${MAX.h2}`);
+    if(cnt.h3>MAX.h3) errs.push(`3-korkeat liikaa: ${cnt.h3}/${MAX.h3}`);
+    if(cnt.h4>MAX.h4) errs.push(`4-korkeat liikaa: ${cnt.h4}/${MAX.h4}`);
+    if(!state.goal) errs.push('Goal puuttuu.');
+    if(!state.start) errs.push('Start puuttuu.');
+    if(state.start && state.goal && state.start.r===state.goal.r && state.start.c===state.goal.c){
+      errs.push('Start ei voi olla Goalissa.');
+    }
+    if(state.start && !state.crates.has(`${state.start.r},${state.start.c}`)){
+      errs.push('Start ei ole laatikon päällä.');
+    }
+    if(errs.length){
+      setStatus('Tarkistus: '+errs.join(' | '), 'err');
+      return {ok:false, message:errs.join(' | ')};
+    }else{
+      setStatus('OK: pulma kelvollinen (ylärajat eivät ylity).', 'ok');
+      return {ok:true};
+    }
+  }
+  document.getElementById('btnValidate').addEventListener('click', validateBoard);
+
+  function toPuzzleJSON(){
+    const crates = Array.from(state.crates, ([k,h])=>{
+      const {r,c}=parseKey(k); return {r,c,h};
+    });
+    const name = (nameEl.value||'').trim();
+    const diff = (diffEl.value||'').trim();
+    const obj = {
+      name: name || suggestNameFromCounts(),
+      size: SIZE,
+      goal: state.goal? {...state.goal}: null,
+      start: state.start? {...state.start}: null,
+      crates,
+      rules: rulesEl.value || 'original'
+    };
+    if(diff) obj.difficulty = diff;
+    return obj;
+  }
+
+  function suggestNameFromCounts(){
+    const cnt = counts();
+    return `G${cnt.goal}-${cnt.h2}-${cnt.h3}-${cnt.h4}`;
+    // sarja-viennissä lisätään aikaleima tiedostonimeen, jos nimi on geneerinen
+  }
+
+  function copyThisJSON(){
+    const obj = toPuzzleJSON();
+    const text = JSON.stringify(obj, null, 2);
+    navigator.clipboard.writeText(text).then(
+      ()=> setStatus('JSON kopioitu leikepöydälle.', 'ok'),
+      ()=> setStatus('Leikepöydälle kopiointi epäonnistui.', 'warn')
+    );
+  }
+  document.getElementById('btnCopyJSON').addEventListener('click', copyThisJSON);
+
+  function download(filename, text){
+    const blob = new Blob([text], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function exportThisJSON(){
+    const v = validateBoard();
+    if(!v.ok && !confirm('Pulmassa on puutteita. Viedäänkö silti?')) return;
+    const obj = toPuzzleJSON();
+    const base = (nameEl.value||'').trim() || obj.name;
+    const fname = addStampIfGeneric(base) + '.json';
+    download(fname, JSON.stringify(obj, null, 2));
+    setStatus(`Tallennettu: ${fname}`, 'ok');
+  }
+  document.getElementById('btnExportOne').addEventListener('click', exportThisJSON);
+
+  function addStampIfGeneric(name){
+    // Lisää aikaleima jos nimi näyttää generiseltä "G#-#-#-#"
+    if(/^G\d+-\d+-\d+-\d+$/.test(name)){
+      const stamp = new Date().toISOString().replace(/[-:T]/g,'').slice(0,14);
+      return `${name}_${stamp}`;
+    }
+    return name;
+  }
+
+  /* ---------- Series manager ---------- */
+  function refreshSeriesList(){
+    seriesListEl.innerHTML = '';
+    series.forEach((puz, idx)=>{
+      const row = document.createElement('div');
+      row.className = 'series-item';
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const title = document.createElement('div');
+      title.textContent = puz.name || `(pulma ${idx+1})`;
+      const sub = document.createElement('div');
+      sub.className = 'sub';
+      const counts = `G1-${puz.crates.filter(x=>x.h===2).length}-${puz.crates.filter(x=>x.h===3).length}-${puz.crates.filter(x=>x.h===4).length}`;
+      sub.textContent = `${puz.difficulty||'—'} • ${counts}`;
+      meta.appendChild(title); meta.appendChild(sub);
+
+      const btns = document.createElement('div');
+      btns.className = 'btns';
+
+      const bLoad = document.createElement('button'); bLoad.className='iconbtn'; bLoad.textContent='Lataa';
+      bLoad.addEventListener('click', ()=>{ loadPuzzleIntoBoard(puz); selectedIndex = idx; setStatus(`Pulma #${idx+1} ladattu sarjasta.`,'ok'); });
+
+      const bUp = document.createElement('button'); bUp.className='iconbtn'; bUp.textContent='↑';
+      bUp.addEventListener('click', ()=>{ if(idx>0){ const t=series[idx-1]; series[idx-1]=series[idx]; series[idx]=t; refreshSeriesList(); } });
+
+      const bDown = document.createElement('button'); bDown.className='iconbtn'; bDown.textContent='↓';
+      bDown.addEventListener('click', ()=>{ if(idx<series.length-1){ const t=series[idx+1]; series[idx+1]=series[idx]; series[idx]=t; refreshSeriesList(); } });
+
+      const bDel = document.createElement('button'); bDel.className='iconbtn'; bDel.textContent='Poista';
+      bDel.addEventListener('click', ()=>{ if(confirm('Poistetaanko tämä pulma sarjasta?')){ series.splice(idx,1); if(selectedIndex===idx) selectedIndex=-1; refreshSeriesList(); } });
+
+      btns.append(bLoad,bUp,bDown,bDel);
+      row.append(meta,btns);
+      seriesListEl.appendChild(row);
+    });
+  }
+
+  function loadPuzzleIntoBoard(p){
+    // p: {name,size,goal,start,crates[],rules?,difficulty?}
+    if(p.size && p.size !== SIZE) alert(`Varoitus: pulman size=${p.size}, editori on 6×6.`);
+    state.goal = p.goal ? {r: +p.goal.r, c: +p.goal.c} : null;
+    state.start = p.start ? {r: +p.start.r, c: +p.start.c} : null;
+    state.crates.clear();
+    if(Array.isArray(p.crates)){
+      for(const it of p.crates){
+        const r = +it.r, c = +it.c, h = +it.h;
+        if(inBounds(r,c) && (h===2||h===3||h===4)) state.crates.set(`${r},${c}`, h);
+      }
+    }
+    // meta
+    nameEl.value = p.name || '';
+    diffEl.value = p.difficulty || '';
+    rulesEl.value = p.rules || 'original';
+    render();
+  }
+
+  document.getElementById('btnAddToSeries').addEventListener('click', ()=>{
+    const v = validateBoard();
+    if(!v.ok && !confirm('Pulmassa on puutteita. Lisätäänkö silti sarjaan?')) return;
+    const puz = toPuzzleJSON();
+    series.push(puz);
+    selectedIndex = series.length-1;
+    refreshSeriesList();
+    setStatus('Lisätty sarjaan.', 'ok');
+  });
+
+  document.getElementById('btnUpdateInSeries').addEventListener('click', ()=>{
+    if(selectedIndex<0 || selectedIndex>=series.length){ setStatus('Valitse sarjasta ensin pulma (Lataa).','warn'); return; }
+    const v = validateBoard();
+    if(!v.ok && !confirm('Pulmassa on puutteita. Päivitetäänkö silti sarjaan?')) return;
+    const puz = toPuzzleJSON();
+    series[selectedIndex] = puz;
+    refreshSeriesList();
+    setStatus(`Sarjassa #${selectedIndex+1} päivitetty.`, 'ok');
+  });
+
+  document.getElementById('btnNewSeries').addEventListener('click', ()=>{
+    if(confirm('Tyhjennetäänkö koko sarja?')){
+      series = []; selectedIndex = -1; refreshSeriesList();
+      setStatus('Sarja tyhjennetty.');
+    }
+  });
+
+  document.getElementById('btnExportSeries').addEventListener('click', ()=>{
+    if(series.length===0){ setStatus('Sarja on tyhjä.','warn'); return; }
+    const pack = {
+      format: "tipover-puzzle-set",
+      version: 1,
+      created: new Date().toISOString(),
+      rules: "original",
+      puzzles: series
+    };
+    const fnameBase = `tipover_pulmat_${new Date().toISOString().replace(/[-:T]/g,'').slice(0,14)}`;
+    download(`${fnameBase}.json`, JSON.stringify(pack, null, 2));
+    setStatus(`Sarja viety: ${fnameBase}.json`, 'ok');
+  });
+
+  /* ---------- Import (single or series) ---------- */
+  document.getElementById('btnImport').addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', async (e)=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    try{
+      const text = await f.text();
+      const data = JSON.parse(text);
+
+      if(Array.isArray(data.puzzles)){ // series file
+        // normalize & replace series
+        series = data.puzzles.map(p => normalizePuzzle(p)).filter(Boolean);
+        selectedIndex = -1;
+        refreshSeriesList();
+        setStatus(`Sarja ladattu: ${series.length} pulmaa.`, 'ok');
+
+        // Lataa ensimmäinen muokkaukseen
+        if(series.length>0){ loadPuzzleIntoBoard(series[0]); selectedIndex = 0; }
+      }else{
+        // single puzzle
+        const p = normalizePuzzle(data);
+        if(!p){ setStatus('Virhe: puuttuva/virheellinen pulma.', 'err'); return; }
+        loadPuzzleIntoBoard(p);
+        selectedIndex = -1;
+        setStatus('Yksittäinen pulma ladattu.', 'ok');
+      }
+    }catch(err){
+      console.error(err);
+      setStatus('Virhe JSONin lukemisessa.', 'err');
+    }finally{
+      e.target.value = '';
+    }
+  });
+
+  function normalizePuzzle(data){
+    if(!data) return null;
+    const size = +((data.size!=null)? data.size : 6);
+    const goal = data.goal? { r:+data.goal.r, c:+data.goal.c } : null;
+    const start = data.start? { r:+data.start.r, c:+data.start.c } : null;
+    const crates = Array.isArray(data.crates) ? data.crates.map(it => ({ r:+it.r, c:+it.c, h:+it.h })) : [];
+    return {
+      name: data.name || '',
+      size,
+      goal, start, crates,
+      rules: data.rules || 'original',
+      difficulty: data.difficulty || ''
+    };
+  }
+
+  /* ---------- Init ---------- */
+  buildGrid();
+  setStatus('Valmis. Tee pulma, lisää sarjaan, vie sarja JSON.');
+})();
+</script>
+</body>
+</html>
