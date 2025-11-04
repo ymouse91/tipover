@@ -113,16 +113,52 @@ button.tool.active{ outline:2px solid var(--accent); }
   position:absolute; inset:0; border-radius:10px; display:flex; align-items:center; justify-content:center;
   color:#111; text-shadow:0 1px 0 rgba(255,255,255,.6);
 }
-.cell .mark.goal{ background:var(--goal); color:white; font-weight:900; }
+.cell .mark.goal{ background:var(--goal); color:white; font-weight:800; }
 .cell .mark.h2{ background:var(--h2); }
 .cell .mark.h3{ background:var(--h3); }
 .cell .mark.h4{ background:var(--h4); }
 .cell .slab{ position:absolute; inset:0; background:var(--slab); border-radius:10px; }
 
+/* alkuperäinen tyyli parannettuna */
 .start-pin{
-  position:absolute; width:18px; height:18px; border-radius:50%;
-  background: #111; border:2px solid #fff; box-shadow:0 0 0 2px #111;
-  bottom:6px; right:6px;
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #10b981;           /* vihreä erottuva sävy */
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #065f46; /* tumma reunus */
+  bottom: 6px;
+  right: 6px;
+  z-index: 200;                  /* nosta kaikkien markkien ja numeroiden yläpuolelle */
+}
+
+
+/* solusta luodaan pinoamiskonteksti */
+.cell{
+  position: relative;
+}
+
+/* numero näkyy aina päällimmäisenä */
+.cell::before{
+  content: attr(data-n);   /* lukee numeron suoraan data-n:stä */
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #111827;          /* tumma */
+  text-shadow: 0 1px 2px rgba(255,255,255,.85);
+  pointer-events: none;
+  user-select: none;
+  z-index: 50;             /* yli muiden */
+}
+
+/* varmistetaan, että laatikoiden/merkintöjen kerros jää alemmaksi */
+.mark, .slab, .crate, .h2, .h3, .h4, .goal {
+  position: absolute;      /* jos eivät jo ole */
+  inset: 0;
+  z-index: 1;
 }
 
 .footer{
@@ -215,12 +251,14 @@ button.tool.active{ outline:2px solid var(--accent); }
 
     <div class="panel footer">
       <div class="left">
+        <button class="primary" id="btnSolve">Tarkista ratkaistavuus</button>
         <button class="secondary" id="btnNewBoard">Tyhjennä ruudukko</button>
         <button class="secondary" id="btnValidate">Tarkista</button>
         <button class="secondary" id="btnCopyJSON">Kopioi tämä JSON</button>
         <button class="secondary" id="btnExportOne">Vie tämä JSON</button>
       </div>
       <div class="right">
+        <pre id="solveLog" style="max-height:160px; overflow:auto; margin:0; padding:8px; background:#f8fafc; border:1px dashed #e5e7eb; border-radius:10px; min-width:260px; display:none;"></pre>
         <div class="state" id="status">Valmis. Tee pulma, lisää sarjaan, vie sarja JSON.</div>
       </div>
     </div>
@@ -292,20 +330,23 @@ button.tool.active{ outline:2px solid var(--accent); }
   }
 
   /* ---------- Grid ---------- */
-  function buildGrid(){
-    elGrid.innerHTML = '';
-    for(let r=0;r<SIZE;r++){
-      for(let c=0;c<SIZE;c++){
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.dataset.r = r;
-        cell.dataset.c = c;
-        cell.addEventListener('pointerdown', onCellPointer);
-        elGrid.appendChild(cell);
-      }
+function buildGrid(){
+  elGrid.innerHTML = '';
+  for(let r = 0; r < SIZE; r++){
+    for(let c = 0; c < SIZE; c++){
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      cell.dataset.n = r * SIZE + c + 1;   // <-- numero talteen, ei häviä renderissä
+      cell.addEventListener('pointerdown', onCellPointer);
+      elGrid.appendChild(cell);
     }
-    render();
   }
+  render();
+}
+
+
 
   function pickCell(r,c){ return elGrid.children[r*SIZE + c] || null; }
 
@@ -657,6 +698,183 @@ button.tool.active{ outline:2px solid var(--accent); }
       difficulty: data.difficulty || ''
     };
   }
+
+  
+  /* ---------- Solver (ratkaistavuus) ---------- */
+  // Malli: TipOver/Crate-peli 6x6
+  // - Pelaaja alkaa start-ruudusta (sen on oltava jonkin laatikon päällä).
+  // - Pelaaja voi kävellä 4-suuntaisessa verkossa kaikkien KOSKETTAVIEN ruutujen yli,
+  //   joissa on jokin laatikko (h>=1). (Kaadettu pino muuttuu "laatoiksi" h kpl suuntaan.)
+  // - Kaadettaessa ruudun (r,c) pinoa, sen korkeus h määrää, monta ruutua meloon (1..h)
+  //   ko. suuntaan kaadetaan. Kaadon TÄYTYY pysyä kentän sisällä, tyhjällä alueella,
+  //   eikä se saa peittää GOAL-ruutua. Kaadon jälkeen lähtöruutu tyhjenee (0) ja
+  //   h perättäistä ruutua suuntaan täyttyy h=1 "laatoilla".
+  // - Tavoite: pelaajan saavutettavissa oleva alue on ORTOGONAALISESTI VIEREKKÄIN GOALin kanssa.
+  //
+  // Tämä vastaa aiemmin sovittua sääntötulkintaa: goalin päälle ei kaadeta; pulma ratkeaa kun
+  // saadaan kaadettua pinot niin, että päädytään GOALin viereen.
+  //
+  // Palauttaa: { ok:true, moves:[{cell,dir}], explored:int, log:string[] } tai null jos ei ratkea.
+
+  function solveTipOverFromEditor(){
+    const v = validateBoard();
+    if(!v.ok){ return { ok:false, reason:'Kelvoton pulma: '+v.message }; }
+    const puz = toPuzzleJSON();
+    return solveTipOver(puz);
+  }
+
+  function solveTipOver(puz){
+    const N = 6;
+    // Grid: 0=tyhjä, 1=laatta (kaadettu), 2/3/4=pysty pino, G=goal (merkitään -1)
+    const G = -1;
+    const grid = Array.from({length:N},()=>Array(N).fill(0));
+    if(puz.goal) grid[puz.goal.r][puz.goal.c] = G;
+    if(Array.isArray(puz.crates)){
+      for(const it of puz.crates){
+        const r=+it.r, c=+it.c, h=+it.h;
+        if(r>=0&&r<N&&c>=0&&c<N && (h===2||h===3||h===4)){
+          if(grid[r][c]===0) grid[r][c]=h; // älä korvaa goal
+        }
+      }
+    }
+    const start = puz.start ? {r:+puz.start.r, c:+puz.start.c} : null;
+    const goal = puz.goal ? {r:+puz.goal.r, c:+puz.goal.c} : null;
+    if(!start||!goal) return { ok:false, reason:'Start tai Goal puuttuu.' };
+    if(grid[start.r][start.c]<=0) return { ok:false, reason:'Start ei ole laatikon päällä.' };
+
+    // Dir helpers
+    const DIRS = [{dr:-1,dc:0, tag:'↑'},{dr:0,dc:-1,tag:'←'},{dr:1,dc:0,tag:'↓'},{dr:0,dc:1,tag:'→'}];
+    function inb(r,c){ return r>=0&&c>=0&&r<N&&c<N; }
+    function adj(a,b){ return Math.abs(a.r-b.r)+Math.abs(a.c-b.c)===1; }
+
+    // Serialize state as: grid heights + reachable bitmask
+    function cloneGrid(g){ return g.map(row=>row.slice()); }
+    function gridKey(g){
+      // encode as base36 string
+      let s='';
+      for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+        const v=g[r][c];
+        // map -1 -> 5, 0->0,1->1,2->2,3->3,4->4 (goal fixed - not changing)
+        const d = (v===-1?5:v);
+        s += d.toString(6); // base6 char
+      }
+      return s;
+    }
+
+    function reachableMask(g, seeds){
+      // flood-fill starting from all 'seeds' over cells with g[r][c] >= 1 (tiles or stacks), but not G
+      // Return bitmask as BigInt (36 bits)
+      let mask = 0n;
+      const q=[]; const seen = Array.from({length:N},()=>Array(N).fill(false));
+      for(const s of seeds){
+        if(!inb(s.r,s.c)) continue;
+        if(g[s.r][s.c]===G || g[s.r][s.c]===0) continue;
+        q.push(s); seen[s.r][s.c]=true;
+      }
+      while(q.length){
+        const {r,c}=q.shift();
+        mask |= 1n << BigInt(r*N + c);
+        for(const d of DIRS){
+          const nr=r+d.dr, nc=c+d.dc;
+          if(inb(nr,nc) && !seen[nr][nc] && g[nr][nc]!==G && g[nr][nc]>=1){
+            seen[nr][nc]=true; q.push({r:nr,c:nc});
+          }
+        }
+      }
+      return mask;
+    }
+    function maskHas(mask, r,c){ return (mask >> BigInt(r*N+c)) & 1n; }
+
+    // initial
+    let initSeeds = [start];
+    let initMask = reachableMask(grid, initSeeds);
+    // Succeed immediately?
+    if(adjacentToGoalByMask(initMask, goal)) return { ok:true, moves:[], explored:1, log:['Start on GOALin vieressä.'] };
+
+    function adjacentToGoalByMask(mask, goal){
+      for(const d of DIRS){
+        const r=goal.r+d.dr, c=goal.c+d.dc;
+        if (inb(r,c) && and_mask(mask,r,c)) return true;
+      }
+      return false;
+    }
+    function and_mask(mask,r,c){ return ((mask >> BigInt(r*N+c)) & 1n)===1n; }
+
+    // BFS
+    const startStateKey = gridKey(grid)+'|'+initMask.toString();
+    const Q=[{ grid:cloneGrid(grid), mask:initMask, path:[], seeds:[start] }];
+    const seen = new Set([startStateKey]);
+    let explored=0;
+
+    function tryTip(g, r,c, dir){
+      const h=g[r][c];
+      if(h<2) return null;
+      // cells ahead must be inside, empty (0), and not GOAL
+      const cells=[];
+      let rr=r, cc=c;
+      for(let k=1;k<=h;k++){
+        rr += dir.dr; cc += dir.dc;
+        if(!inb(rr,cc)) return null;
+        if(g[rr][cc]!==0) return null;
+        cells.push({r:rr,c:cc});
+      }
+      // also forbid covering goal (redundant because g[rr][cc]!==0 already catches G=-1)
+      if(cells.some(p => goal && p.r===goal.r && p.c===goal.c)) return null;
+
+      const ng = cloneGrid(g);
+      ng[r][c]=0; // source becomes empty
+      for(const p of cells){ ng[p.r][p.c]=1; } // fallen tiles
+      return { ng, fallen:cells };
+    }
+
+    while(Q.length){
+      const cur = Q.shift();
+      explored++;
+
+      // Success test
+      if(adjacentToGoalByMask(cur.mask, goal)){
+        return { ok:true, moves:cur.path, explored, log:['Ratkaisu löytyi.'] };
+      }
+
+      // Consider all reachable stacks (h>=2) that are within cur.mask
+      for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+        if (cur.grid[r][c] >= 2 && and_mask(cur.mask,r,c)){
+          for(const d of DIRS){
+            const tipped = tryTip(cur.grid, r,c,d);
+            if(!tipped) continue;
+            // new seeds: any of fallen cells
+            const newMask = reachableMask(tipped.ng, tipped.fallen);
+            const key = gridKey(tipped.ng)+'|'+newMask.toString();
+            if(seen.has(key)) continue;
+            seen.add(key);
+            // move notation: "n↑" where n = 1..36 index
+            const n = r*N+c+1;
+            const step = { cell:n, dir:d.tag };
+            Q.push({ grid:tipped.ng, mask:newMask, path:cur.path.concat([step]), seeds:tipped.fallen });
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // UI glue for button
+  document.getElementById('btnSolve').addEventListener('click', ()=>{
+    const logEl = document.getElementById('solveLog');
+    logEl.style.display='block'; logEl.textContent='';
+    const t0 = performance.now();
+    const res = solveTipOverFromEditor();
+    const t1 = performance.now();
+    if(!res || res.ok===false){
+      setStatus((res && res.reason) ? ('Ei ratkea: '+res.reason) : 'Ei ratkea.', 'err');
+      logEl.textContent += '[LOG] Ei ratkea.\n';
+      return;
+    }
+    const seq = res.moves.map(m => `${m.cell}${m.dir}`).join(', ');
+    setStatus(`Ratkeaa: ${res.moves.length} kaatoa, tutki=${res.explored}, ${(t1-t0).toFixed(1)} ms`, 'ok');
+    logEl.textContent += '[Ratkaisu] '+ (seq||'(tyhjä — start jo goalin vieressä)') + '\n';
+  });
 
   /* ---------- Init ---------- */
   buildGrid();
