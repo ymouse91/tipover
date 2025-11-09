@@ -167,7 +167,10 @@ async function loadPuzzles(){
       const opt=document.createElement('option');
       opt.value=String(i);
       const counts=`G1-${p.crates.filter(x=>x.h===2).length}-${p.crates.filter(x=>x.h===3).length}-${p.crates.filter(x=>x.h===4).length}`;
-      opt.textContent=`${i+1}. ${p.name||'(nimetön)'} — ${p.difficulty||'—'} — ${counts}`;
+opt.textContent = p.name && p.name !== counts
+  ? `${i+1}. ${p.difficulty || '—'} – ${p.name} –  ${counts}`
+  : `${i+1}. ${p.difficulty || '—'} – ${counts}`;
+
       selEl.appendChild(opt);
     });
 
