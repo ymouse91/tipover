@@ -1,7 +1,7 @@
 {
   "format": "tipover-puzzle-set",
   "version": 1,
-  "created": "2025-11-05T07:43:11.039Z",
+  "created": "2025-11-09T09:24:43.685Z",
   "rules": "original",
   "puzzles": [
     {
@@ -594,7 +594,7 @@
       "difficulty": "Intermediate"
     },
     {
-      "name": "G1-5-3-1",
+      "name": "G1-2-1-2",
       "size": 6,
       "goal": {
         "r": 5,
