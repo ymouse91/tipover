@@ -1,5 +1,5 @@
 /* TipOver SW — yksinkertainen app-shell + assets + pulmatiedosto */
-const CACHE = 'tipover-v7';
+const CACHE = 'tipover-v8';
 const ASSETS = [
   './',
   './index.html',

@@ -80,6 +80,17 @@ button:disabled{opacity:.5;}
 .success{border-color:#065f46;} .warn{border-color:#854d0e;} .err{border-color:#7f1d1d;}
 
 @media (max-width:480px){ :root{ --cell-base:68px; --gap:6px; } }
+
+.flash-board {
+  animation: flashBoard 0.35s ease-out;
+}
+
+@keyframes flashBoard {
+  0%   { filter: brightness(1); }
+  50%  { filter: brightness(2.2); }
+  100% { filter: brightness(1); }
+}
+
 </style>
 </head>
 <body>
@@ -168,6 +179,7 @@ const title = document.getElementById('title');
 title.addEventListener('click', ()=>overlay.style.display='flex');
 overlay.addEventListener('click', ()=>overlay.style.display='none');
 </script>
+
 
 </body>
 </html>

@@ -144,10 +144,20 @@ function performTip(dir, dirName){
 }
 
 function checkWin(){
-  if(goalPos && player.r===goalPos.r && player.c===goalPos.c){
-    setStatus('Maalissa! 🎉', 'success');
+  if (goalPos && player.r === goalPos.r && player.c === goalPos.c) {
+
+    if (checkWin.alreadyWon) return;
+    checkWin.alreadyWon = true;
+
+    // Odota yksi frame, että renderöinti valmistuu
+    requestAnimationFrame(() => {
+      flashBoardOnce().then(() => {
+        setStatus('Maalissa! 🎉', 'success');
+      });
+    });
   }
 }
+
 
 /* Pulmien lataus */
 async function loadPuzzles(){
@@ -184,6 +194,24 @@ opt.textContent = p.name && p.name !== counts
     setStatus('Virhe: '+err.message, 'err');
   }
 }
+
+// väläytys ennen ratkaisu-viestiä
+async function flashBoardOnce() {
+  const board = document.querySelector('.board-wrap');
+  if (!board) return;
+
+  const delay = ms => new Promise(res => setTimeout(res, ms));
+
+  for (let i = 0; i < 3; i++) {
+    board.classList.add('flash-board');
+    await delay(350);   // yhden välähdyksen kesto
+    board.classList.remove('flash-board');
+    await delay(120);   // tauko välähdysten välissä
+  }
+}
+
+
+
 
 function loadPuzzle(idx){
   const p=PUZZLES[idx];
