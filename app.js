@@ -214,6 +214,8 @@ async function flashBoardOnce() {
 
 
 function loadPuzzle(idx){
+	checkWin.alreadyWon = false;
+
   const p=PUZZLES[idx];
   currentIndex=idx;
   board=newEmptyBoard();
